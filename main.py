@@ -3,7 +3,9 @@ from pydantic import BaseModel, EmailStr
 from typing import Annotated
 import models
 from database import engine, SessionLocal
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, validates
+import re
+from passlib.hash import bcrypt
 
 app = FastAPI()
 models.Base.metadata.create_all(bind=engine)
@@ -11,6 +13,7 @@ models.Base.metadata.create_all(bind=engine)
 class UserBase(BaseModel):
     name: str
     email: EmailStr
+    password: str
 
 class BooksBase(BaseModel):
     bookKey: str
@@ -26,12 +29,38 @@ def get_db():
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
+# Password validation for regex
+def validate_password(password:str):
+    pattern = r"^(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}$"
+    match = re.match(pattern, password)
+    if not match:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 8 characters long, contain an uppercase letter, a lowercase letter, and a number."
+        )
 
-@app.post("/users/", status_code=status.HTTP_201_CREATED)
+# Create user
+@app.post("/singup/", status_code=status.HTTP_201_CREATED)
 async def create_user(user: UserBase, db: db_dependency):
-    db_user = models.User(**user.model_dump())
-    db.add(db_user)
-    db.commit()
+    user_found = db.query(models.User).filter(models.User.email == user.email).first()
+    if user_found:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User with this email already exists.")
+    else:
+        try:
+            validate_password(user.password)
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        
+        hashed_password = bcrypt.hash(user.password)
+        db_user = models.User(name=user.name, email=user.email, password=hashed_password)
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+
+# Login
+
+# Verify 
+
 
 # Read user
 @app.get("/users/{user_id}", status_code=status.HTTP_200_OK)

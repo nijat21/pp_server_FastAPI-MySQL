@@ -1,5 +1,5 @@
 from sqlalchemy import Boolean, Column, Integer, String, ForeignKey, DateTime,func
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from database import Base
 
 
@@ -13,6 +13,7 @@ class User(Base, Timestamp):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     email = Column(String(100), unique=True, nullable=False)
+    password = Column(String(125), nullable=False)
     # Creates relationships with BooksToRead and BooksRead
     books_to_read = relationship("BooksToRead", back_populates="user")
     books_read = relationship("BooksRead", back_populates="user")
