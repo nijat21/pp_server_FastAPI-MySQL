@@ -1,23 +1,39 @@
 from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm 
 from pydantic import BaseModel, EmailStr
-from typing import Annotated
-import models
-from database import engine, SessionLocal
 from sqlalchemy.orm import Session, joinedload, validates
-import re
+from typing import Annotated
+from database import engine, SessionLocal
 from passlib.hash import bcrypt
+from passlib.context import CryptContext
+from datetime import datetime,timedelta
+from fastapi.middleware.cors import CORSMiddleware
+from jose import JWTError, jwt
+import models
+import re
+import os
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM = os.getenv("ALGORITHM")
+ACCESS_TOKEN_EXPIRE_MINUTES = os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES")
+
 
 app = FastAPI()
 models.Base.metadata.create_all(bind=engine)
 
-class UserBase(BaseModel):
-    name: str
-    email: EmailStr
-    password: str
+oauth2_scheme=OAuth2PasswordBearer(tokenUrl="token")
 
-class BooksBase(BaseModel):
-    bookKey: str
-    userId: int
+origins=[
+    "http://localhost:5173"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentails=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
 
 def get_db():
     db = SessionLocal()
@@ -26,9 +42,22 @@ def get_db():
     finally:
         db.close()
 
-
 db_dependency = Annotated[Session, Depends(get_db)]
 
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+## PYDANTIC BASES
+class UserBase(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    
+class BooksBase(BaseModel):
+    bookKey: str
+    userId: int
+
+## FUNCTIONS
 # Password validation for regex
 def validate_password(password:str):
     pattern = r"^(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}$"
@@ -39,24 +68,73 @@ def validate_password(password:str):
             detail="Password must be at least 8 characters long, contain an uppercase letter, a lowercase letter, and a number."
         )
 
+def get_user_by_email(db:Session, email: str):
+    return db.query(models.User).filter(models.User.email == email).first()
+
+def create_user(db:Session, user:UserBase):
+    hashed_password = pwd_context.hash(user.password)
+    db_user = models.User(name=user.name, email=user.email, password=hashed_password)
+    db.add(db_user)
+    db.commit()
+    return "complete"
+
+def authenticate_user(name:str, email:str, password:str, db:Session):
+    user = db.query(models.User).filter(models.User.email == user.email).first()
+    if not user:
+        return False
+    if not pwd_context.verify(password, user.password):
+        return False
+    return user
+
+def create_access_token(data:dict, expires_delta:timedelta | None = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.now(datetime.utc) + expires_delta
+    else:
+        expire=datetime.now(datetime.utc) + timedelta(minutes=15)
+    to_encode.update({"exp":expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def verify_token(token: str=Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=ALGORITHM)
+        email: str=payload.get("sub")
+        if email is None:
+            raise HTTPException(status_code=403, detail="Token is invalid or expired")
+        return payload
+    except JWTError:
+        raise HTTPException(status_code=403,
+        detail="Token is invalid or expired" )
+
+
 # Create user
 @app.post("/singup/", status_code=status.HTTP_201_CREATED)
-async def create_user(user: UserBase, db: db_dependency):
-    user_found = db.query(models.User).filter(models.User.email == user.email).first()
-    if user_found:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User with this email already exists.")
-    else:
-        try:
-            validate_password(user.password)
-        except ValueError as e:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-        
-        hashed_password = bcrypt.hash(user.password)
-        db_user = models.User(name=user.name, email=user.email, password=hashed_password)
-        db.add(db_user)
-        db.commit()
-        db.refresh(db_user)
+async def create_user(user: UserCreate, db: db_dependency):
+    db_user = get_user_by_email(db, email=user.email)
+    if db_user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User with this email already exists.")
+    return create_user(db=db, user=user)
 
+@app.post("/token")
+def login_for_access_token(*, form_data:OAuth2PasswordRequestForm = Depends(), db:db_dependency):
+    user = authenticate_user(form_data.email, form_data.password, db)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate":"Bearer"}
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub":user.email}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/verify-token/{oken}")
+async def verify_token(token:str):
+    verify_token(token=token)
+    return {"message":"Token is valid"}
 # Login
 
 # Verify 
