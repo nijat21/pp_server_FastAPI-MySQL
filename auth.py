@@ -1,4 +1,4 @@
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
@@ -9,11 +9,16 @@ from models import User
 from passlib.context import CryptContext
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from jose import jwt, JWTError
+from dotenv import load_dotenv
 import os
+import re
 
+load_dotenv()
+ 
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
 ACCESS_TOKEN_EXPIRE_MINUTES = os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES")
+
 
 router = APIRouter(
     prefix='/auth',
@@ -22,7 +27,7 @@ router = APIRouter(
 
 
 bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme=OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme=OAuth2PasswordBearer(tokenUrl="auth/token")
 
 
 ## PYDANTIC BASES
@@ -46,35 +51,52 @@ db_dependency = Annotated[Session, Depends(get_db)]
 
 @router.post("/signup", status_code=status.HTTP_201_CREATED)
 async def create_user(db:db_dependency, create_user_request: UserBase):
+    db_user = db.query(User).filter(User.email == create_user_request.email).first()
+    if db_user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User with this email already exists.")
+    
+    validated_password = validate_password(create_user_request.password)
+
     create_user_model = User(
-        name=create_user_request.name,
+        name = create_user_request.name,
         email = create_user_request.email,
-        password = bcrypt_context.hash(create_user_request.password)
+        password = bcrypt_context.hash(validated_password)
     )
 
     db.add(create_user_model)
     db.commit()
 
+# Password validation for regex
+def validate_password(password:str):
+    pattern = r"^(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}$"
+    match = re.match(pattern, password)
+    if not match:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 8 characters long, contain an uppercase letter, a lowercase letter, and a number."
+        )
+    return password
+
+
 @router.post("/token", response_model=Token)
-def login_for_access_token(*, form_data:OAuth2PasswordRequestForm = Depends(), db:db_dependency):
-    user = authenticate_user(form_data.email, form_data.password, db)
+def login_for_access_token(form_data:Annotated[OAuth2PasswordRequestForm, Depends()], db:db_dependency ):
+    user = authenticate_user(form_data.username, form_data.password, db)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
-            headers={"WWW-Authenticate":"Bearer"}
         )
     # Create access token if user is authenticated
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(minutes=int(ACCESS_TOKEN_EXPIRE_MINUTES))
     access_token = create_access_token(
-        data={"sub":user.email, "id": user.id, "name": user.name}, expires_delta=access_token_expires
+        data={"email":user.email, "id": user.id, "name": user.name}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
 
 # Checks for user and password
-def authenticate_user(email:str, password:str, db:Session):
-    user = db.query(User).filter(User.email == user.email).first()
+def authenticate_user(email:str, password:str, db):
+    user = db.query(User).filter(User.email == email).first()
     if not user:
         return False
     if not bcrypt_context.verify(password, user.password):
@@ -85,23 +107,48 @@ def authenticate_user(email:str, password:str, db:Session):
 def create_access_token(data:dict, expires_delta:timedelta | None = None):
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.now(datetime.utc) + expires_delta
+        expire = datetime.now(tz=timezone.utc) + expires_delta
     else:
-        expire=datetime.now(datetime.utc) + timedelta(minutes=20)
+        expire=datetime.now(tz=timezone.utc) + timedelta(minutes=20)
     to_encode.update({"exp":expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
 # Validate token and return user information
-async def validate_token(token:Annotated[str, Depends(oauth2_scheme)]):
+async def get_current_user(token:Annotated[str, Depends(oauth2_scheme)]):
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithm=ALGORITHM)
-        email:str = payload.get('sub')
-        id:int = payload.get('id')
-        name:str = payload.get('name')
-        if email is None or id is None or name is None:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email:str = payload.get("email")
+        id:int = payload.get("id")
+        name:str = payload.get("name")
+        if email is None or id is None:
             raise HTTPException(status_code=403, detail="Token is invalid or expired")
         return payload
     except JWTError:
         raise HTTPException(status_code=403,
         detail="Token is invalid or expired" )
+    
+
+# Login
+
+
+
+# # Read user
+# @app.get("/users/{user_id}", status_code=status.HTTP_200_OK)
+# async def read_user(user_id: int, db:db_dependency):
+#     user = db.query(models.User).options(
+#         joinedload(models.User.books_to_read),
+#         joinedload(models.User.books_read)
+#         ).filter(models.User.id == user_id).first()
+#     if user is None:
+#         raise HTTPException(status_code=404, detail="User not found")
+#     return user
+
+
+# @app.delete("/users/{user_id}", status_code=status.HTTP_200_OK)
+# async def delete_post(user_id:int, db:db_dependency):
+#     db_user = db.query(models.User).filter(models.User.id == user_id).first()
+#     if db_user is None:
+#         raise HTTPException(status_code=404, detail="User not found")
+#     db.delete(db_user)
+#     db.commit()
