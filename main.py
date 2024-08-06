@@ -1,9 +1,11 @@
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm 
 from pydantic import BaseModel, EmailStr
-from sqlalchemy.orm import Session, joinedload, validates
-from typing import Annotated
 from database import engine, SessionLocal
+from sqlalchemy.orm import Session, joinedload, validates
+import auth
+
+from typing import Annotated
 from passlib.hash import bcrypt
 from passlib.context import CryptContext
 from datetime import datetime,timedelta
@@ -19,6 +21,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES")
 
 
 app = FastAPI()
+app.include_router(auth.router)
 models.Base.metadata.create_all(bind=engine)
 
 oauth2_scheme=OAuth2PasswordBearer(tokenUrl="token")
@@ -44,7 +47,7 @@ def get_db():
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 ## PYDANTIC BASES
@@ -72,20 +75,22 @@ def get_user_by_email(db:Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()
 
 def create_user(db:Session, user:UserBase):
-    hashed_password = pwd_context.hash(user.password)
+    hashed_password = bcrypt_context.hash(user.password)
     db_user = models.User(name=user.name, email=user.email, password=hashed_password)
     db.add(db_user)
     db.commit()
     return "complete"
 
-def authenticate_user(name:str, email:str, password:str, db:Session):
+# Checks for user and password
+def authenticate_user(email:str, password:str, db:Session):
     user = db.query(models.User).filter(models.User.email == user.email).first()
     if not user:
         return False
-    if not pwd_context.verify(password, user.password):
+    if not bcrypt_context.verify(password, user.password):
         return False
     return user
 
+# Creates access token, sets expiration time 
 def create_access_token(data:dict, expires_delta:timedelta | None = None):
     to_encode = data.copy()
     if expires_delta:
@@ -110,7 +115,7 @@ def verify_token(token: str=Depends(oauth2_scheme)):
 
 # Create user
 @app.post("/singup/", status_code=status.HTTP_201_CREATED)
-async def create_user(user: UserCreate, db: db_dependency):
+async def create_user(user: UserBase, db: db_dependency):
     db_user = get_user_by_email(db, email=user.email)
     if db_user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User with this email already exists.")
