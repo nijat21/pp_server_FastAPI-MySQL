@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, Request
+from fastapi.middleware.cors import CORSMiddleware
 import models
 from database import engine, SessionLocal
 from typing import Annotated
@@ -6,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload, validates
 from pydantic import BaseModel, EmailStr
 import auth
 from auth import get_current_user
+from auth_middleware import AuthMiddleware
 
 
 app = FastAPI()
@@ -13,16 +15,21 @@ app.include_router(auth.router)
 models.Base.metadata.create_all(bind=engine)
 
 origins=[
-    "http://localhost:5173"
+    "http://localhost:5173",
+    "https://phoenix-pages.netlify.app"
 ]
 
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=origins,
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"]
-# )
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
+# Auth middleware
+app.add_middleware(AuthMiddleware)
+
 
 def get_db():
     db = SessionLocal()
@@ -39,16 +46,6 @@ user_dependency = Annotated[dict, Depends(get_current_user)]
 class BooksBase(BaseModel):
     bookKey: str
     userId: int
-
-
-# Returns user if active JWT
-@app.get("/", status_code=status.HTTP_200_OK)
-async def user(user:user_dependency, db:db_dependency):
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication failed")
-    return {"User": user}
-
-
 
 @app.post('/books-to-read/', status_code=status.HTTP_201_CREATED)
 async def add_book_to_read(post: BooksBase, db: db_dependency):

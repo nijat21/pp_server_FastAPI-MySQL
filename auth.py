@@ -49,22 +49,43 @@ def get_db():
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
+
 @router.post("/signup", status_code=status.HTTP_201_CREATED)
 async def create_user(db:db_dependency, create_user_request: UserBase):
-    db_user = db.query(User).filter(User.email == create_user_request.email).first()
-    if db_user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User with this email already exists.")
-    
-    validated_password = validate_password(create_user_request.password)
+    try:
+        db_user = db.query(User).filter(User.email == create_user_request.email).first()
+        if db_user:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User with this email already exists.")
+        
+        validated_password = validate_password(create_user_request.password)
 
-    create_user_model = User(
-        name = create_user_request.name,
-        email = create_user_request.email,
-        password = bcrypt_context.hash(validated_password)
-    )
+        create_user_model = User(
+            name = create_user_request.name,
+            email = create_user_request.email,
+            password = bcrypt_context.hash(validated_password)
+        )
 
-    db.add(create_user_model)
-    db.commit()
+        db.add(create_user_model)
+        db.commit()
+        
+        # Create access token if user is authenticated
+        # Authenticate the user
+        user = authenticate_user(create_user_request.email, create_user_request.password, db)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication failed after user creation."
+            )
+        # Generate access token
+        access_token_expires = timedelta(minutes=int(ACCESS_TOKEN_EXPIRE_MINUTES))
+        access_token = create_access_token(
+            data={"email": user.email, "id": user.id, "name": user.name}, 
+            expires_delta=access_token_expires
+        )
+        
+        return {"access_token": access_token, "token_type": "bearer"}
+    except:
+        HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred while creating the user.")
 
 # Password validation for regex
 def validate_password(password:str):
@@ -104,6 +125,7 @@ def authenticate_user(email:str, password:str, db):
     return user
 
 # Creates access token with JWT, sets expiration time 
+
 def create_access_token(data:dict, expires_delta:timedelta | None = None):
     to_encode = data.copy()
     if expires_delta:
@@ -117,17 +139,35 @@ def create_access_token(data:dict, expires_delta:timedelta | None = None):
 # Validate token and return user information
 async def get_current_user(token:Annotated[str, Depends(oauth2_scheme)]):
     try:
+        # Split the token from "Bearer" prefix
+        scheme, _, token = token.partition(" ")
+        if scheme.lower() != "bearer":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, 
+                detail="Authorization scheme must be 'Bearer'"
+            )
+
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email:str = payload.get("email")
         id:int = payload.get("id")
         name:str = payload.get("name")
         if email is None or id is None:
-            raise HTTPException(status_code=403, detail="Token is invalid or expired")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token is invalid or expired")
         return payload
     except JWTError:
         raise HTTPException(status_code=403,
         detail="Token is invalid or expired" )
-    
+
+user_dependency = Annotated[dict, Depends(get_current_user)]
+
+# Returns user if active JWT
+@router.get("/verify", status_code=status.HTTP_200_OK)
+async def user(user:user_dependency, db:db_dependency):
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication failed")
+    return {"User": user}
+
+
 
 # Login
 
