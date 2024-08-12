@@ -139,14 +139,6 @@ def create_access_token(data:dict, expires_delta:timedelta | None = None):
 # Validate token and return user information
 async def get_current_user(token:Annotated[str, Depends(oauth2_scheme)]):
     try:
-        # Split the token from "Bearer" prefix
-        scheme, _, token = token.partition(" ")
-        if scheme.lower() != "bearer":
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, 
-                detail="Authorization scheme must be 'Bearer'"
-            )
-
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email:str = payload.get("email")
         id:int = payload.get("id")

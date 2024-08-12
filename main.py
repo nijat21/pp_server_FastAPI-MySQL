@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session, joinedload, validates
 from pydantic import BaseModel, EmailStr
 import auth
 from auth import get_current_user
-from auth_middleware import AuthMiddleware
 
 
 app = FastAPI()
@@ -27,9 +26,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
-# Auth middleware
-app.add_middleware(AuthMiddleware)
-
 
 def get_db():
     db = SessionLocal()
@@ -48,13 +44,13 @@ class BooksBase(BaseModel):
     userId: int
 
 @app.post('/books-to-read/', status_code=status.HTTP_201_CREATED)
-async def add_book_to_read(post: BooksBase, db: db_dependency):
+async def add_book_to_read(post: BooksBase, db: db_dependency, user:user_dependency):
     db_post = models.BooksToRead(**post.model_dump())
     db.add(db_post)
     db.commit()
 
 @app.delete('/books-to-read/{book_id}', status_code=status.HTTP_200_OK)
-async def delete_book_to_read(book_id:int, db:db_dependency):
+async def delete_book_to_read(book_id:int, db:db_dependency, user:user_dependency):
     db_book = db.query(models.BooksToRead).filter(models.BooksToRead.id == book_id).first()
     if db_book is None:
         raise HTTPException(status_code=404, detail="Books not found")
@@ -62,13 +58,13 @@ async def delete_book_to_read(book_id:int, db:db_dependency):
     db.commit()
 
 @app.post('/books-read/', status_code=status.HTTP_201_CREATED)
-async def add_book_read(post: BooksBase, db: db_dependency):
+async def add_book_read(post: BooksBase, db: db_dependency, user:user_dependency):
     db_post = models.BooksRead(**post.model_dump())
     db.add(db_post)
     db.commit()
 
 @app.delete('/books-read/{book_id}', status_code=status.HTTP_200_OK)
-async def delete_book_read(book_id:int, db:db_dependency):
+async def delete_book_read(book_id:int, db:db_dependency, user:user_dependency):
     db_book = db.query(models.BooksRead).filter(models.BooksRead.id == book_id).first()
     if db_book is None:
         raise HTTPException(status_code=404, detail="Books not found")
