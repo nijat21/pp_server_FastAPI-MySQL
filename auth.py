@@ -27,7 +27,7 @@ router = APIRouter(
 
 
 bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme=OAuth2PasswordBearer(tokenUrl="auth/token")
+oauth2_scheme=OAuth2PasswordBearer(tokenUrl="auth/login")
 
 
 ## PYDANTIC BASES
@@ -40,6 +40,15 @@ class Token(BaseModel):
     access_token:str
     token_type: str
 
+# Model for delete user request
+class DeleteUserRequest(BaseModel):
+    password: str
+
+class UpdateEmailRequest(BaseModel):
+    new_email: EmailStr
+    password: str
+
+# Database dependency
 def get_db():
     db=SessionLocal()
     try:
@@ -160,15 +169,35 @@ async def user(user:user_dependency, db:db_dependency):
     return {"User": user}
 
 
-@router.delete("/users/{user_id}", status_code=status.HTTP_200_OK)
-async def delete_post(user_id:int, db:db_dependency):
-    db_user = db.query(User).filter(User.id == user_id).first()
-    if db_user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    db.delete(db_user)
-    db.commit()
+@router.delete("/deleteUser/{user_id}", status_code=status.HTTP_200_OK)
+async def delete_post(user_id:int, request:DeleteUserRequest, db:db_dependency, user:user_dependency):
+    try:
+        db_user = db.query(User).filter(User.id == user_id).first()
+        if db_user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        if not authenticate_user(db_user.email, request.password, db):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The password included is not correct")
+        
+        db.delete(db_user)
+        db.commit()
+        return {"detail": "Account deleted successfully"}
+    except:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error occurred deleting the account")
 
-
+@router.put("/updateEmail/{user_id}", status_code=status.HTTP_200_OK)
+async def update_email(user_id: int, request:UpdateEmailRequest, db: db_dependency, user:user_dependency):
+    try:
+        db_user = db.query(User).filter(User.id == user_id).first()
+        if db_user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        if not authenticate_user(db_user.email, request.password, db):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The password included is not correct")
+        # Update the email
+        db_user.email = request.new_email
+        db.commit()
+        return {"detail": "Email updated successfully"}
+    except:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error occurred updating the email")
 
 # # Read user
 # @app.get("/users/{user_id}", status_code=status.HTTP_200_OK)
