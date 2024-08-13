@@ -48,6 +48,10 @@ class UpdateEmailRequest(BaseModel):
     new_email: EmailStr
     password: str
 
+class UpdatePasswordRequest(BaseModel):
+    new_password: str
+    password: str
+
 # Database dependency
 def get_db():
     db=SessionLocal()
@@ -198,6 +202,21 @@ async def update_email(user_id: int, request:UpdateEmailRequest, db: db_dependen
         return {"detail": "Email updated successfully"}
     except:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error occurred updating the email")
+
+@router.put("/updatePassword/{user_id}", status_code=status.HTTP_200_OK)
+async def update_password(user_id:int, request:UpdatePasswordRequest, db:db_dependency, user:user_dependency):
+    try:
+        db_user = db.query(User).filter(User.id == user_id).first()
+        if db_user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        if not authenticate_user(db_user.email, request.password, db):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The password included is not correct")
+        db_user.password = bcrypt_context.hash(request.new_password)
+        db.commit()
+        return {"detail": "Password updated successfully"}
+    except:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error occurred updating the password")
+
 
 # # Read user
 # @app.get("/users/{user_id}", status_code=status.HTTP_200_OK)
