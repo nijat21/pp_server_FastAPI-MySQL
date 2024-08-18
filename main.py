@@ -7,21 +7,22 @@ from sqlalchemy.orm import Session, joinedload, validates
 from pydantic import BaseModel, EmailStr
 import auth
 from auth import get_current_user
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 
 app = FastAPI()
 app.include_router(auth.router)
 models.Base.metadata.create_all(bind=engine)
 
-origins=[
-    "http://localhost:5173",
-    "https://phoenix-pages.netlify.app"
-]
+ORIGIN = os.getenv("ORIGIN")
 
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=ORIGIN,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
