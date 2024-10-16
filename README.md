@@ -1,6 +1,6 @@
 # PhoenixPagesApp - FastAPI Backend
 
-## Overview
+![Books image](https://collegeinfogeek.com/wp-content/uploads/2018/11/Essential-Books.jpg)
 
 PhoenixPagesApp is a FastAPI-based backend that allows users to manage their reading lists. Users can create accounts, log in, and manage books they wish to read as well as books they have already read.
 
@@ -33,12 +33,13 @@ This backend uses authentication with JWT tokens for secure access to user accou
 
 1.  Clone the repository:
 
-    bash
+        bash
 
-    Copy code
+        Copy code
 
-    `git clone https://github.com/yourusername/PhoenixPagesApp.git
-cd PhoenixPagesApp`
+        `git clone https://github.com/yourusername/PhoenixPagesApp.git
+
+    cd PhoenixPagesApp`
 
 2.  Install dependencies:
 
@@ -50,15 +51,16 @@ cd PhoenixPagesApp`
 
 3.  Set up environment variables: Create a `.env` file in the project root and define the following variables:
 
-    env
+        env
 
-    Copy code
+        Copy code
 
-    `URL_DATABASE=mysql+pymysql://username:password@localhost/dbname
-SECRET_KEY=your_secret_key
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-ORIGIN=https://yourfrontend.com`
+        `URL_DATABASE=mysql+pymysql://username:password@localhost/dbname
+
+    SECRET_KEY=your_secret_key
+    ALGORITHM=HS256
+    ACCESS_TOKEN_EXPIRE_MINUTES=30
+    ORIGIN=https://yourfrontend.com`
 
 4.  Initialize the database:
 
@@ -90,15 +92,16 @@ The application will be available at `http://127.0.0.1:8000`.
   - Method: `POST`
   - Payload:
 
-    json
+        json
 
-    Copy code
+        Copy code
 
-    `{
-  "name": "John Doe",
-  "email": "johndoe@example.com",
-  "password": "YourPassword123!"
-}`
+        `{
+
+    "name": "John Doe",
+    "email": "johndoe@example.com",
+    "password": "YourPassword123!"
+    }`
 
 - **Login**:
 
@@ -106,25 +109,27 @@ The application will be available at `http://127.0.0.1:8000`.
   - Method: `POST`
   - Payload:
 
-    json
+        json
 
-    Copy code
+        Copy code
 
-    `{
-  "username": "johndoe@example.com",
-  "password": "YourPassword123!"
-}`
+        `{
+
+    "username": "johndoe@example.com",
+    "password": "YourPassword123!"
+    }`
 
   - Response:
 
-    json
+        json
 
-    Copy code
+        Copy code
 
-    `{
-  "access_token": "jwt_token_here",
-  "token_type": "bearer"
-}`
+        `{
+
+    "access_token": "jwt_token_here",
+    "token_type": "bearer"
+    }`
 
 - **Verify Token**:
 
@@ -139,14 +144,15 @@ The application will be available at `http://127.0.0.1:8000`.
   - Method: `POST`
   - Payload:
 
-    json
+        json
 
-    Copy code
+        Copy code
 
-    `{
-  "book_key": "book_identifier",
-  "user_id": 1
-}`
+        `{
+
+    "book_key": "book_identifier",
+    "user_id": 1
+    }`
 
 - **Retrieve Books "To Read"**:
 
@@ -159,14 +165,15 @@ The application will be available at `http://127.0.0.1:8000`.
   - Method: `DELETE`
   - Payload:
 
-    json
+        json
 
-    Copy code
+        Copy code
 
-    `{
-  "book_key": "book_identifier",
-  "user_id": 1
-}`
+        `{
+
+    "book_key": "book_identifier",
+    "user_id": 1
+    }`
 
 - **Add a Book to "Read" List**:
 
@@ -174,14 +181,15 @@ The application will be available at `http://127.0.0.1:8000`.
   - Method: `POST`
   - Payload:
 
-    json
+        json
 
-    Copy code
+        Copy code
 
-    `{
-  "book_key": "book_identifier",
-  "user_id": 1
-}`
+        `{
+
+    "book_key": "book_identifier",
+    "user_id": 1
+    }`
 
 - **Retrieve "Read" Books**:
 
@@ -194,14 +202,15 @@ The application will be available at `http://127.0.0.1:8000`.
   - Method: `DELETE`
   - Payload:
 
-    json
+        json
 
-    Copy code
+        Copy code
 
-    `{
-  "book_key": "book_identifier",
-  "user_id": 1
-}`
+        `{
+
+    "book_key": "book_identifier",
+    "user_id": 1
+    }`
 
 ## Database Models
 
